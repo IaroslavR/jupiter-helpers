@@ -1,0 +1,10 @@
+ipython
+pytest
+pytest-structlog
+requests-mock
+localstack
+pytest_localstack
+awscli==1.15.83
+boto3==1.7.82
+botocore==1.10.82
+six==1.10.0
