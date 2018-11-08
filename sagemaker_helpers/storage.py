@@ -28,7 +28,8 @@ class Storage(object):
     download_now: bool = True
     copy_to_s3: bool = False
     overwrite_existed: bool = False
-    s3: BaseClient = None
+    s3_service: BaseClient = None
+    s3_resource: BaseClient = None
     bucket: str = None
     role: str = None
     session: str = None
@@ -47,8 +48,11 @@ class Storage(object):
         if self.init_local:
             os.makedirs(self.local_path, exist_ok=True)  # create if not exists
         if self.init_bucket:
-            self.s3 = boto3.client("s3")
-            self.s3.create_bucket(Bucket=self.bucket_name)  # create if not exists
+            self.s3_service = boto3.client("s3")  # Low-level connections
+            self.s3_resource = boto3.resource("s3")
+            self.s3_service.create_bucket(
+                Bucket=self.bucket_name
+            )  # create if not exists
         if self.download_now:
             self.download_from_source()
 
@@ -75,7 +79,7 @@ class Storage(object):
     @property
     def s3_key_exists(self) -> bool:
         try:
-            self.s3.Object(self.bucket_name, self.s3_key).load()
+            self.s3_resource.Object(self.bucket_name, self.s3_key).load()
         except ClientError as e:
             if e.response["Error"]["Code"] == "404":
                 return False
@@ -91,12 +95,16 @@ class Storage(object):
     def upload_to_s3(self):
         if self.s3_key_exists:
             if self.overwrite_existed:
-                self.s3.upload_file(self.local_full_name, self.bucket_name, self.s3_key)
+                self.s3_service.upload_file(
+                    self.local_full_name, self.bucket_name, self.s3_key
+                )
                 log.info("key overwritten", key=self.s3_key)
             else:
                 log.debug("key exists upload skipped", key=self.s3_key)
         else:
-            self.s3.upload_file(self.local_full_name, self.bucket_name, self.s3_key)
+            self.s3_service.upload_file(
+                self.local_full_name, self.bucket_name, self.s3_key
+            )
             log.info("key uploaded", key=self.s3_key)
 
     def download_from_s3(self, fname):
@@ -108,14 +116,17 @@ class Storage(object):
     def download_from_efs(self, fname):
         raise NotImplementedError
 
+    def download_from_url(self):
+        return requests.get(self.source).content
+
     def download_from_source(self) -> str:
         target = self.local_full_name
         if not self.overwrite_existed and os.path.isfile(target):
             log.debug("file already exists, download skipped", path=target)
         else:
-            r = requests.get(self.source)
             with open(target, "wb") as f:
-                f.write(r.content)
-        if self.copy_to_s3 and self.overwrite_existed:
-            raise NotImplementedError
+                f.write(self.download_from_url())
+            log.debug("file downloaded", source=self.source)
+        if self.copy_to_s3:
+            self.upload_to_s3()
         return target

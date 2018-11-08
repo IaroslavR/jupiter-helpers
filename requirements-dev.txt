@@ -1,7 +1,7 @@
 ipython
 pytest
 pytest-structlog
-requests-mock
+pytest-mock
 localstack
 pytest_localstack
 awscli==1.15.83
